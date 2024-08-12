@@ -1,0 +1,162 @@
+Написать 10 исследовательских запросов таким образом, чтобы проанализировать клиентов, фильмы, заказы. 
+
+Исследуйте клиентов и их заказы, а также постарайтесь найти клиентов, которые сделали больше всего заказов. клиентов, которые оставили больше всего денег в прокате, самый популярный фильм на основе заказов. 
+
+Сделайте вывод.
+
+Сделайте скриншоты результатов запросов, поместите в папку в облаке и приложите ссылку с доступом.
+
+1 ## Клиенты которые больше всего заказов сделали
+SELECT CONCAT(first_name, ' ', last_name) AS "Клиент",
+		COUNT(rental_id) AS "Количество_заказов"
+FROM rental
+	JOIN customer USING(customer_id)
+GROUP BY Клиент
+ORDER BY count(rental_id) DESC; ##
+
+2 ## Клиенты по деньгам
+SELECT CONCAT(customer.first_name, ' ', customer.last_name) AS "Клиент",
+		SUM(payment.amount) AS "Сумма"
+FROM rental
+	JOIN payment ON rental.rental_id = payment.rental_id
+					AND rental.customer_id = payment.customer_id
+	JOIN customer ON payment.customer_id = customer.customer_id
+GROUP BY Клиент
+ORDER BY Сумма DESC;##
+
+3 ## Страны клиентов по количеству заказов и денег
+SELECT country.country AS "Страна",
+		SUM(payment.amount) AS "Сумма"
+FROM rental
+	JOIN payment ON rental.rental_id = payment.rental_id
+					AND rental.customer_id = payment.customer_id
+	JOIN customer ON payment.customer_id = customer.customer_id
+	JOIN address ON customer.address_id = address.address_id
+	JOIN city ON address.city_id = city.city_id
+	JOIN country ON city.country_id = country.country_id
+GROUP BY country.country
+ORDER BY Сумма DESC; ##
+
+4 ## Фильмы которые чаще всего заказывали
+SELECT film.title AS "Фильм",
+		COUNT(rental.rental_id) AS "Всего_заказов"
+FROM rental
+	JOIN payment ON rental.rental_id = payment.rental_id
+					AND rental.customer_id = payment.customer_id
+	JOIN inventory ON rental.inventory_id = inventory.inventory_id
+	JOIN film ON inventory.film_id = film.film_id
+GROUP BY Фильм
+ORDER BY COUNT(rental.rental_id) DESC;##
+
+5 ##Фильмы которые принесли больше всего денег
+SELECT film.title AS "Фильм",
+		SUM(payment.amount) AS "Сумма"
+FROM rental
+	JOIN payment ON rental.rental_id = payment.rental_id
+					AND rental.customer_id = payment.customer_id
+	JOIN inventory ON rental.inventory_id = inventory.inventory_id
+	JOIN film ON inventory.film_id = film.film_id
+GROUP BY Фильм
+ORDER BY Сумма DESC;##
+
+6 ## Категории по количеству заказов
+SELECT category.name AS genre,
+		COUNT(rental.rental_id) AS orders
+FROM rental
+	JOIN payment ON rental.rental_id = payment.rental_id
+					AND rental.customer_id = payment.customer_id
+	JOIN inventory ON rental.inventory_id = inventory.inventory_id
+	JOIN film ON inventory.film_id = film.film_id
+	JOIN film_category ON inventory.film_id = film_category.film_id
+	JOIN category ON film_category.category_id = category.category_id
+GROUP BY category.name
+ORDER BY category.name, COUNT(rental.rental_id) DESC;##
+
+7 ## Категории по деньгам
+SELECT category.name AS genre,
+		SUM(payment.amount) AS revenue
+FROM rental
+	JOIN payment ON rental.rental_id = payment.rental_id
+					AND rental.customer_id = payment.customer_id
+	JOIN inventory ON rental.inventory_id = inventory.inventory_id
+	JOIN film ON inventory.film_id = film.film_id
+	JOIN film_category ON inventory.film_id = film_category.film_id
+	JOIN category ON film_category.category_id = category.category_id
+GROUP BY category.name
+ORDER BY category.name, COUNT(rental.rental_id) DESC;##
+
+8 ## Лучшие фильмы в категориях по заказам
+WITH
+  film_with_rental_count AS (
+    SELECT film.*, COUNT(rental.*) AS rental_count
+    FROM film
+    JOIN inventory USING (film_id)
+    JOIN rental USING (inventory_id)
+    GROUP BY film.film_id
+  ),
+  category_rankings AS (
+    SELECT
+      category.name AS category_name,
+      ROW_NUMBER() OVER (
+        PARTITION BY category.category_id
+        ORDER BY film_with_rental_count.rental_count DESC
+      ) AS category_rank,
+      film_with_rental_count.title AS film_title,
+      film_with_rental_count.rental_count AS rental_count
+    FROM film_with_rental_count
+    JOIN film_category USING (film_id)
+    JOIN category USING (category_id)
+  )
+SELECT *
+FROM category_rankings
+WHERE category_rank <= 3
+ORDER BY category_name; ##
+
+9 ## Лучшие 3 фильма в категориях по деньгам
+WITH
+  film_with_rental_count AS (
+    SELECT film.*, SUM(payment.amount) AS rental_amount
+    FROM film
+    JOIN inventory USING (film_id)
+    JOIN rental USING (inventory_id)
+	JOIN payment USING (rental_id)
+    GROUP BY film.film_id
+  ),
+  category_rankings AS (
+    SELECT
+      category.name AS category_name,
+      ROW_NUMBER() OVER (
+        PARTITION BY category.category_id
+        ORDER BY film_with_rental_count.rental_amount DESC
+      ) AS category_rank,
+      film_with_rental_count.title AS film_title,
+      film_with_rental_count.rental_amount AS rental_amount
+    FROM film_with_rental_count
+    JOIN film_category USING (film_id)
+    JOIN category USING (category_id)
+  )
+SELECT *
+FROM category_rankings
+WHERE category_rank <= 3
+ORDER BY category_name;##
+
+10 ## Самые большие заказы по деньгам
+SELECT rental.rental_id,
+		CONCAT(customer.first_name, ' ', customer.last_name) AS Client,
+		SUM(payment.amount) AS Amount
+FROM rental
+	JOIN payment ON rental.rental_id = payment.rental_id
+					AND rental.customer_id = payment.customer_id
+	JOIN customer ON payment.customer_id = customer.customer_id
+WHERE payment.amount = (SELECT MAX(amount)
+						FROM payment)
+GROUP BY rental.rental_id, Client;## 
+
+Выводы:
+1. Клиенты - заказы - деньги. Есть практически прямая корреляция между количеством заказов и денег по клиентам. ТОП-20 в обоих списках почти идентичны. 
+2. Распределение клиентов по странам, показывает, что большую долю клиентов занимают люди приехавшие из Индии и Китая.
+3. Фильмы по заказам и по деньгам очень слабо коррелированы. Фильмы которые часто берут - быстро возвращают. 
+4. Популярные жанры коррелированы по заказам и деньгам на 100%.
+5. Опять же ТОП-3 фильмов по жанрам в сравнении по деньгам и заказам не коррелированы.
+Отсутствие корреляции между заказами и деньгами по фильмам говорит об спонтанности выбора фильмов и их несоответствия ожиданию. 
+
